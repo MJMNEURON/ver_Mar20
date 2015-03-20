@@ -1,0 +1,236 @@
+load_file("nrngui.hoc")
+
+//load_file("REcell_no_loc_no_leak.tem") // use the .tem file 
+                                     //without localizing T/leak current
+//load_file("REcell.tem") 
+//load_file("RE.tem") 
+//load_file("re80.tem")
+
+load_file("RE_preserved.tem")
+
+//----------------------------------------------------------------------------
+// adding templated reticular cells
+//----------------------------------------------------------------------------
+ncells=2    // sets the number of cells
+objectvar RE[ncells]      // create an array of object variables
+//corrD = 1
+
+
+for i=0, ncells-1 { 
+  if (i>ncells/2-1){
+    RE[i] = new REcell()
+    RE[i].position(i+390, 5, (i-ncells/2)*300) // move origin of cel to (10, 5, -25)
+  }else{
+    RE[i] = new REcell()
+    RE[i].position(i, 5, i*300) // move origin of cel to (10, 5, -25)
+  }
+    //******* comment the following out when using REcell_no_loc_no_leak.tem ******* 
+   // localize(4.5e-5, 4.5e-5, 6e-4)
+}   
+
+
+
+//----------------------------------------------------------------------------
+// retinal axon
+//----------------------------------------------------------------------------
+create retinal_axon
+//tc200_cc.oc
+retinal_axon {
+      insert pas
+      g_pas = 3.79e-5
+      e_pas = -76.5       // to fit current-clamp data (was -71 to -73)
+      cm = 0.88
+      Ra = 173
+
+      insert hh2      // insert fast spikes
+      ena = 50
+      ek = -100
+      vtraub_hh2 = -52
+      gnabar_hh2 = 0.01       // adapted to single-compartment
+      gkbar_hh2 = 0.01        // adapted to single-compartment
+
+      insert itGHK        // T-current everywhere
+      cai = 2.4e-4 
+      cao = 2 
+      eca = 120 
+      shift_itGHK = -1    // screening charge shift + 3 mV error
+      gcabar_itGHK = 0.0002
+      pcabar_itGHK = 8e-5
+      qm_itGHK = 2.5
+      qh_itGHK = 2.5
+
+      insert cad      // calcium diffusion everywhere
+      depth_cad = 0.1
+      kt_cad = 0      // no pump
+      kd_cad = 1e-4
+      taur_cad = 5
+      cainf_cad = 2.4e-4  
+}
+
+
+
+
+
+
+//----------------------------------------------------------------------------
+// adding stimuli
+//----------------------------------------------------------------------------
+
+objectvar rstim // insert current injection
+
+retinal_axon rstim = new IClamp(.5)
+rstim.del = 0
+rstim.dur = 1e9 // dur has to be infinite when used with vector playing 
+rstim.amp = 0
+
+objref fspikes, vecspikes, vecstim
+fspikes=new File()
+fspikes.ropen("cs2_06.dat")
+vecspikes=new Vector()
+vecstim = new Vector(4000,0)
+vecspikes.scanf(fspikes)
+for total=0, vecspikes.size()-1{
+    vecstim.x( int(vecspikes.x(total)*1000) ) = 4000
+}
+vecspikes.printf()
+vecstim.play( &rstim.amp, 1 )
+
+
+// Definition of the list of NetCon objects representing synapses to the retinal axon
+objectvar syn2retinal_axon
+syn2retinal_axon = new List()
+
+
+objectvar RE0
+RE0 = new List()
+//----------------------------------------------------------------------------
+// RETINA -> RELAY (AMPA, excitatory)
+//----------------------------------------------------------------------------
+
+objectvar syn // won't be any different if using objref
+REcell[0].soma_re syn = new AMPA(0.5)
+
+Prethresh_AMPA = 0 // (mV) voltage level nec for release
+retinal_axon syn2retinal_axon.append( new NetCon(&v(0.5), syn, Prethresh_AMPA, 0, 0.06) )
+
+
+/*
+objectvar syn1// won't be any different if using objref
+REcell[1].dend_re3[13] syn1 = new AMPA(0.5)
+
+Prethresh_AMPA = 0 // (mV) voltage level nec for release
+REcell[0].soma_re RE0.append( new NetCon(&v(0.5), syn1, 0, 0, 0.06) )
+
+/*
+
+//////////////////////////////////////////////////////////////////////////////
+//////////////////// Setting up RETINA -> LGN connections ////////////////////
+//////////////////////////////////////////////////////////////////////////////
+//------------------ RETINA -> RELAY (AMPA, excitatory) ----------------------
+objectvar syn, spta, con // won't be any different if using objref
+objref time, id, rec, tobj
+time=new Vector()
+id=new Vector()
+rec= new List()
+REcell[0].soma_re syn = new AMPA(0.5)
+REcell[0].soma_re spta = new NetStim(0.5)
+// Possion train generator, 20Hz for spta as in Sakmann and Creutzfeldt, 1969
+// time course: 2500ms; # of spikes: 50; mean inter-spike interval: 50ms
+spta.interval= 50
+spta.number= 35
+spta.start=0
+spta.noise=1
+con=new NetCon(spta, syn, 0, 0, 0.4)
+*/
+
+
+//----------------------------------------------------------------------------
+// transient time
+//----------------------------------------------------------------------------
+trans = 00
+
+print " "
+print ">> Transient time of ",trans," ms"
+print " "
+
+//----------------------------------------------------------------------------
+// setup simulation parameters
+//----------------------------------------------------------------------------
+Dt = 0.2
+npoints = 12500
+
+dt = 0.1			// must be submultiple of Dt
+tstart = trans
+tstop = trans + npoints * Dt
+runStopAt = tstop
+steps_per_ms = 1/Dt
+
+celsius = 34			// temperature of John's experiments
+
+v_init = -74			// approximate resting Vm
+
+//----------------------------------------------------------------------------
+// adding graph(s): http://senselab.med.yale.edu/ModelDB/ShowModel.asp?model=18198&file=\SYN_NEW\gabab3.hoc
+//----------------------------------------------------------------------------
+objectvar g[20]         // max 20 graphs
+ngraph = 0
+
+proc addgraph() { local ii  // define subroutine to add a new graph
+                // addgraph("variable", minvalue, maxvalue)
+    ngraph = ngraph+1
+    ii = ngraph-1
+    g[ii] = new Graph()
+    g[ii].size(0,tstop,$2,$3)
+    g[ii].xaxis()
+    g[ii].yaxis()
+    g[ii].addvar($s1,1,0)
+    g[ii].save_name("graphList[0].")
+    graphList[0].append(g[ii])
+}
+
+addgraph("v(0.5)",-80,40)
+g.addvar("REcell[0].soma_re.v(0.5)", 2, 0.1) //red
+g.addvar("retinal_axon.v(0.5)",3,0.1) //blue
+
+//addgraph("dend4[1].v(0.5)",-80,40)
+addgraph("REcell[0].soma_re.v(0.5)",-80,40)
+addgraph("REcell[1].dend_re3[13].v(0.5)",-80,40)
+//addgraph("dend4[18].v(0.5)",-80,40)
+//addgraph("dend8[20].v(0.5)",-80,40)
+
+//----------------------------------------------------------------------------
+// save data
+//----------------------------------------------------------------------------
+/*
+objref recvretic, rectretic, savspikeretic, cortexrretic
+rectretic = new Vector() //python: rec_t = h.Vector()
+recvretic = new Vector()
+cortexrretic=new Vector() 
+rectretic.record(&t) // python: rec_t.record(h._ref_t)
+recvretic.record(&REcell[0].soma_re.v(0.5))//recording from reticular cell
+
+//run()
+
+//myrun()
+
+savspikeretic = new File()
+savspikeretic.wopen("reticular.dat")
+timestepretic=0 
+timestepiretic=0
+totalretic=0 
+totaliretic=0
+printf("reticular cell")
+
+for i=0 && totalretic=0, rectretic.size()-1 {
+    if (recvretic.x[i] >= -15 && timestepretic + 1 < rectretic.x(i)){
+    timestepretic=rectretic.x(i)
+    totalretic=totalretic+1
+    printf("%g\n", totalretic)
+    printf("%g\n", timestepretic)
+    savspikeretic.printf("%g\n", timestepretic)
+}
+}
+
+savspikeretic.close()
+*/
+

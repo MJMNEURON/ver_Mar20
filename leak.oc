@@ -1,0 +1,62 @@
+//-----------------------------------------------------------------------
+//
+//  Defines additional functions to add leak or dc current
+//
+//-----------------------------------------------------------------------
+
+
+
+
+//
+//  add_leak(ga,va) ->	add leak current in all compartments
+//			NON ADDITIVE: restarts from the values of E_pas,G_pas
+//
+
+proc add_leak() {
+   forall{
+	g_pas = $1 + G_pas
+	e_pas = (G_pas * E_pas + $1 * $2) / (G_pas + $1)
+   }
+}
+
+
+
+
+
+
+
+//
+//  add_dc(i)       ->	add dc current (in nA) in current compartment
+//			redefines e_pas from current values of e_pas,g_pas
+//			ADDITIVE: starts from the current values of e_pas,g_pas
+//			the dc variable accumulates successive dc's
+//
+
+proc add_dc() { // local idc
+	dc = dc + $1
+	idc = 100 * $1 / area(0.5)		// conversion to mA/cm2
+	e_pas = e_pas + idc/g_pas
+}
+
+
+
+
+
+//
+//  reset() 	->	resets the leak current to the values E_pas,G_pas
+//			resets dc to zero
+//
+
+proc reset() {
+	forall {
+		g_pas = G_pas
+		e_pas = E_pas
+	}
+	dc = 0
+}
+
+
+
+
+dc = 0		// dc variable initialized to zero
+
